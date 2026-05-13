@@ -2,47 +2,36 @@
 set -euo pipefail
 
 # ============================================================
-#  Custom 3x-ui Installer - Replace frontend with custom version
-#  Author: Your Name
-#  Usage: curl -fsSL https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/install.sh | bash
+#  Custom 3x-ui Installer - Anime Theme by @SadraCoding
+#  GitHub: https://github.com/SadraCoding/3xui-anime-theme
 # ============================================================
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 PLAIN='\033[0m'
 
-# Configuration - CHANGE THESE TO YOUR REPO
-CUSTOM_FRONTEND_REPO="https://github.com/SadraCoding/3xui-anime-theme.git"
-CUSTOM_FRONTEND_BRANCH="main"  # or "master"
+# ===== CONFIGURATION =====
+REPO_OWNER="SadraCoding"
+REPO_NAME="3xui-anime-theme"
+BRANCH="main"  # Changed from master to main
+
+# Your custom frontend repo (same as installer repo)
+CUSTOM_FRONTEND_REPO="https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
 ORIGINAL_XUI_REPO="https://github.com/MHSanaei/3x-ui.git"
 
-# Installation paths
 XUI_INSTALL_DIR="/usr/local/x-ui"
-WORK_DIR="/tmp/3x-ui-custom-build"
+WORK_DIR="/tmp/3xui-anime-build"
+# =========================
 
-# ============================================================
-# Helper Functions
-# ============================================================
+error_exit() { echo -e "${RED}ERROR: $1${PLAIN}" && exit 1; }
+print_info() { echo -e "${GREEN}[INFO]${PLAIN} $1"; }
+print_warning() { echo -e "${YELLOW}[WARN]${PLAIN} $1"; }
 
-error_exit() {
-    echo -e "${RED}ERROR: $1${PLAIN}"
-    exit 1
-}
-
-print_info() {
-    echo -e "${GREEN}[INFO]${PLAIN} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARN]${PLAIN} $1"
-}
-
-print_header() {
+print_header() { 
     echo -e "${BLUE}═══════════════════════════════════════════════════════════${PLAIN}"
-    echo -e "${GREEN}$1${PLAIN}"
+    echo -e "${GREEN}  3x-ui Anime Theme Installer - by @SadraCoding${PLAIN}"
     echo -e "${BLUE}═══════════════════════════════════════════════════════════${PLAIN}"
 }
 
@@ -55,26 +44,23 @@ check_root() {
 check_dependencies() {
     print_info "Checking dependencies..."
     
-    local deps=("git" "curl" "tar" "golang-go" "npm" "nodejs" "gcc" "make")
-    local missing=()
+    apt-get update -qq 2>/dev/null || true
     
-    # Update package list
-    apt-get update -qq
+    # Install basic dependencies
+    apt-get install -y -qq git curl tar gcc make 2>/dev/null || true
     
-    for dep in "${deps[@]}"; do
-        if ! command -v "$dep" &> /dev/null; then
-            missing+=("$dep")
-        fi
-    done
-    
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        print_info "Installing missing dependencies: ${missing[*]}"
-        apt-get install -y -qq "${missing[@]}"
+    # Install Go if not present
+    if ! command -v go &> /dev/null; then
+        print_info "Installing Go..."
+        wget -q https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
+        tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+        export PATH=$PATH:/usr/local/go/bin
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+        rm go1.21.5.linux-amd64.tar.gz
     fi
     
-    # Ensure Node.js is recent enough (v18+)
-    local node_version=$(node -v 2>/dev/null | cut -d'v' -f2 | cut -d'.' -f1)
-    if [[ -z "$node_version" ]] || [[ "$node_version" -lt 18 ]]; then
+    # Install Node.js 20 if not present or too old
+    if ! command -v node &> /dev/null; then
         print_info "Installing Node.js 20 LTS..."
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
         apt-get install -y nodejs
@@ -83,88 +69,87 @@ check_dependencies() {
     print_info "All dependencies satisfied"
 }
 
-clone_original_xui() {
-    print_info "Cloning original 3x-ui from $ORIGINAL_XUI_REPO"
+clone_repositories() {
+    print_info "Cloning repositories..."
     
     rm -rf "$WORK_DIR"
     mkdir -p "$WORK_DIR"
     
-    git clone --depth 1 --branch master "$ORIGINAL_XUI_REPO" "$WORK_DIR"
+    # Clone original 3x-ui (using main branch)
+    print_info "Cloning original 3x-ui..."
+    git clone --depth 1 --branch main "$ORIGINAL_XUI_REPO" "$WORK_DIR/original"
     
     if [[ $? -ne 0 ]]; then
         error_exit "Failed to clone original 3x-ui repository"
     fi
     
-    print_info "Successfully cloned original 3x-ui"
-}
-
-clone_custom_frontend() {
-    print_info "Cloning custom frontend from $CUSTOM_FRONTEND_REPO (branch: $CUSTOM_FRONTEND_BRANCH)"
-    
-    rm -rf "$WORK_DIR/frontend"
-    
-    git clone --depth 1 --branch "$CUSTOM_FRONTEND_BRANCH" "$CUSTOM_FRONTEND_REPO" "$WORK_DIR/frontend"
+    # Clone your custom frontend (your repo)
+    print_info "Cloning your anime theme from: $CUSTOM_FRONTEND_REPO"
+    git clone --depth 1 --branch "$BRANCH" "$CUSTOM_FRONTEND_REPO" "$WORK_DIR/custom"
     
     if [[ $? -ne 0 ]]; then
-        error_exit "Failed to clone custom frontend repository"
+        error_exit "Failed to clone your custom frontend repository"
     fi
     
-    print_info "Successfully cloned custom frontend"
+    # Check if frontend folder exists in your repo
+    if [[ ! -d "$WORK_DIR/custom/frontend" ]]; then
+        print_warning "frontend folder not found in your repository root"
+        print_warning "Looking for frontend in subdirectories..."
+        
+        # Try to find frontend folder anywhere in your repo
+        FRONTEND_DIR=$(find "$WORK_DIR/custom" -type d -name "frontend" | head -1)
+        if [[ -n "$FRONTEND_DIR" ]]; then
+            print_info "Found frontend at: $FRONTEND_DIR"
+            cp -r "$FRONTEND_DIR" "$WORK_DIR/original/frontend"
+        else
+            error_exit "Could not find frontend folder in your repository"
+        fi
+    else
+        # Replace frontend folder
+        rm -rf "$WORK_DIR/original/frontend"
+        cp -r "$WORK_DIR/custom/frontend" "$WORK_DIR/original/frontend"
+    fi
+    
+    print_info "Repositories cloned and frontend replaced"
 }
 
 build_frontend() {
-    print_info "Building custom frontend..."
+    print_info "Building custom anime frontend..."
     
-    cd "$WORK_DIR/frontend"
+    cd "$WORK_DIR/original/frontend"
     
-    # Check if package.json exists
     if [[ ! -f "package.json" ]]; then
-        error_exit "package.json not found in custom frontend"
+        error_exit "package.json not found in frontend folder"
     fi
     
-    # Install dependencies
     print_info "Installing npm dependencies..."
-    npm install --no-fund --no-audit
+    npm install --no-fund --no-audit 2>/dev/null || npm install
     
-    if [[ $? -ne 0 ]]; then
-        error_exit "Failed to install npm dependencies"
-    fi
-    
-    # Build the frontend
     print_info "Building Vue 3 frontend..."
     npm run build
     
     if [[ $? -ne 0 ]]; then
-        error_exit "Failed to build frontend"
+        error_exit "Frontend build failed"
     fi
     
-    # Verify build output
     if [[ ! -d "dist" ]]; then
-        error_exit "Build directory 'dist' not found"
+        error_exit "Build output 'dist' directory not found"
     fi
     
-    # Copy built files to web/dist (where Go expects them)
-    rm -rf "$WORK_DIR/web/dist"
-    cp -r dist "$WORK_DIR/web/dist"
+    # Copy built files to where Go expects them
+    rm -rf "$WORK_DIR/original/web/dist"
+    cp -r dist "$WORK_DIR/original/web/dist"
     
     print_info "Frontend built successfully"
 }
 
-backup_existing_installation() {
-    if [[ -d "$XUI_INSTALL_DIR" ]]; then
-        local backup_dir="/tmp/xui-backup-$(date +%Y%m%d-%H%M%S)"
-        print_info "Backing up existing installation to $backup_dir"
-        cp -r "$XUI_INSTALL_DIR" "$backup_dir"
-    fi
-}
-
 build_go_binary() {
-    print_info "Building Go binary with embedded custom frontend..."
+    print_info "Building Go binary with embedded anime theme..."
     
-    cd "$WORK_DIR"
+    cd "$WORK_DIR/original"
     
     # Download Go modules
-    go mod download
+    go mod download 2>/dev/null || true
     
     # Build the binary
     CGO_ENABLED=1 go build -ldflags "-w -s" -o x-ui-custom main.go
@@ -177,43 +162,35 @@ build_go_binary() {
 }
 
 install_xui() {
-    print_info "Installing 3x-ui with custom frontend..."
+    print_info "Installing 3x-ui with anime theme..."
     
     # Stop existing service if running
-    if systemctl is-active --quiet x-ui; then
-        print_info "Stopping existing x-ui service..."
-        systemctl stop x-ui
-    fi
+    systemctl stop x-ui 2>/dev/null || true
     
-    # Create installation directory
+    # Create directories
     mkdir -p "$XUI_INSTALL_DIR"
-    
-    # Copy binary
-    cp -f "$WORK_DIR/x-ui-custom" "$XUI_INSTALL_DIR/x-ui"
-    chmod +x "$XUI_INSTALL_DIR/x-ui"
-    
-    # Copy x-ui.sh script
-    cp -f "$WORK_DIR/x-ui.sh" /usr/bin/x-ui
-    chmod +x /usr/bin/x-ui
-    
-    # Create log directory
     mkdir -p /var/log/x-ui
     
+    # Copy binary
+    cp -f "$WORK_DIR/original/x-ui-custom" "$XUI_INSTALL_DIR/x-ui"
+    chmod +x "$XUI_INSTALL_DIR/x-ui"
+    
+    # Copy management script
+    cp -f "$WORK_DIR/original/x-ui.sh" /usr/bin/x-ui
+    chmod +x /usr/bin/x-ui
+    
     # Install systemd service
-    if [[ -f "$WORK_DIR/x-ui.service" ]]; then
-        cp -f "$WORK_DIR/x-ui.service" /etc/systemd/system/x-ui.service
-    elif [[ -f "$WORK_DIR/x-ui.service.debian" ]]; then
-        cp -f "$WORK_DIR/x-ui.service.debian" /etc/systemd/system/x-ui.service
+    if [[ -f "$WORK_DIR/original/x-ui.service" ]]; then
+        cp -f "$WORK_DIR/original/x-ui.service" /etc/systemd/system/x-ui.service
     else
-        # Create default service file
-        cat > /etc/systemd/system/x-ui.service <<EOF
+        cat > /etc/systemd/system/x-ui.service <<'EOF'
 [Unit]
 Description=3x-ui Service
 After=network.target nss-lookup.target
 
 [Service]
 Type=simple
-ExecStart=$XUI_INSTALL_DIR/x-ui
+ExecStart=/usr/local/x-ui/x-ui
 Restart=on-failure
 RestartPreventExitStatus=23
 LimitNPROC=10000
@@ -229,84 +206,63 @@ EOF
     systemctl enable x-ui
     systemctl start x-ui
     
-    print_info "Xray service started successfully"
+    print_info "3x-ui installed and started successfully"
 }
 
 configure_firewall() {
-    print_info "Configuring firewall..."
-    
     if command -v ufw &> /dev/null; then
-        ufw allow 2053/tcp comment '3x-ui panel'
-        ufw allow 2096/tcp comment '3x-ui subscription'
-        ufw --force enable
-    elif command -v firewall-cmd &> /dev/null; then
-        firewall-cmd --permanent --add-port=2053/tcp
-        firewall-cmd --permanent --add-port=2096/tcp
-        firewall-cmd --reload
+        ufw allow 2053/tcp comment '3x-ui panel' 2>/dev/null || true
+        ufw allow 2096/tcp comment '3x-ui subscription' 2>/dev/null || true
     fi
 }
 
-show_completion_message() {
-    print_header "Installation Complete!"
-    
-    # Get server IP
+show_completion() {
     local server_ip=$(curl -s -4 icanhazip.com 2>/dev/null || echo "localhost")
     
-    echo -e "${GREEN}✅ 3x-ui with your custom frontend has been installed!${PLAIN}"
+    print_header
+    echo ""
+    echo -e "${GREEN}✅ Installation Complete! Your Anime-themed 3x-ui is ready!${PLAIN}"
     echo ""
     echo -e "${YELLOW}╔══════════════════════════════════════════════════════════╗${PLAIN}"
     echo -e "${YELLOW}║                    PANEL ACCESS INFO                     ║${PLAIN}"
     echo -e "${YELLOW}╚══════════════════════════════════════════════════════════╝${PLAIN}"
     echo ""
-    echo -e "${GREEN}Access URL:${PLAIN} http://$server_ip:2053/"
-    echo -e "${GREEN}Default username:${PLAIN} admin"
-    echo -e "${GREEN}Default password:${PLAIN} admin"
+    echo -e "${GREEN}🌐 Access URL:${PLAIN} http://$server_ip:2053/"
+    echo -e "${GREEN}👤 Username:${PLAIN}   admin"
+    echo -e "${GREEN}🔑 Password:${PLAIN}   admin"
     echo ""
     echo -e "${YELLOW}⚠️  IMPORTANT: Change your password immediately after first login!${PLAIN}"
     echo ""
-    echo -e "${BLUE}Commands:${PLAIN}"
-    echo -e "  ${GREEN}x-ui${PLAIN}          - Show menu"
-    echo -e "  ${GREEN}x-ui start${PLAIN}    - Start panel"
-    echo -e "  ${GREEN}x-ui stop${PLAIN}     - Stop panel"
+    echo -e "${BLUE}📌 Useful commands:${PLAIN}"
+    echo -e "  ${GREEN}x-ui${PLAIN}          - Show management menu"
+    echo -e "  ${GREEN}x-ui status${PLAIN}    - Check panel status"
     echo -e "  ${GREEN}x-ui restart${PLAIN}  - Restart panel"
-    echo -e "  ${GREEN}x-ui status${PLAIN}   - Check status"
+    echo -e "  ${GREEN}x-ui stop${PLAIN}     - Stop panel"
     echo ""
-    echo -e "${YELLOW}Your custom frontend has been successfully integrated!${PLAIN}"
+    echo -e "${GREEN}🎨 Enjoy your beautiful anime-themed 3x-ui panel!${PLAIN}"
+    echo ""
 }
 
 cleanup() {
-    print_info "Cleaning up temporary files..."
-    rm -rf "$WORK_DIR"
+    read -rp "Delete temporary build files? [y/N]: " choice
+    if [[ "$choice" == "y" ]] || [[ "$choice" == "Y" ]]; then
+        rm -rf "$WORK_DIR"
+        print_info "Cleanup completed"
+    fi
 }
 
-# ============================================================
-# Main Installation Flow
-# ============================================================
-
 main() {
-    print_header "Custom 3x-ui Installer"
-    echo -e "${GREEN}Custom Frontend Repository:${PLAIN} $CUSTOM_FRONTEND_REPO"
+    print_header
     echo ""
-    
-    # Run installation steps
     check_root
     check_dependencies
-    backup_existing_installation
-    clone_original_xui
-    clone_custom_frontend
+    clone_repositories
     build_frontend
     build_go_binary
     install_xui
     configure_firewall
-    show_completion_message
-    
-    # Optional: ask about cleanup
-    echo ""
-    read -rp "Delete temporary build files? [y/N]: " cleanup_choice
-    if [[ "$cleanup_choice" == "y" ]] || [[ "$cleanup_choice" == "Y" ]]; then
-        cleanup
-    fi
+    show_completion
+    cleanup
 }
 
-# Run main function
 main "$@"

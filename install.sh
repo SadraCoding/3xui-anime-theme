@@ -1,8 +1,17 @@
 #!/bin/bash
-# install.sh - One-command installer for your custom 3x-ui
+# install.sh - One-command installer for 3x-ui Anime Theme
+# Author: SadraCoding
+# GitHub: https://github.com/SadraCoding/3xui-anime-theme
 
-# Your repository URL (where the main script lives)
-SCRIPT_URL="https://raw.githubusercontent.com/SadraCoding/3xui-anime-theme/main/custom-xui-installer.sh"
+REPO_OWNER="SadraCoding"
+REPO_NAME="3xui-anime-theme"
+BRANCH="main"
 
-# Download and run the installer
+SCRIPT_URL="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/custom-xui-installer.sh"
+
+echo -e "\033[0;34m═══════════════════════════════════════════════════════════\033[0m"
+echo -e "\033[0;32m  3x-ui Anime Theme Installer - by @SadraCoding\033[0m"
+echo -e "\033[0;34m═══════════════════════════════════════════════════════════\033[0m"
+echo ""
+
 bash <(curl -fsSL "$SCRIPT_URL")
