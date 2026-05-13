@@ -51,18 +51,18 @@ check_dependencies() {
     
     # Install Go if not present
     if ! command -v go &> /dev/null; then
-        print_info "Installing Go..."
-        wget -q https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-        tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+        print_info "Installing Go 1.26.0..."
+        wget -q https://go.dev/dl/go1.26.0.linux-amd64.tar.gz
+        tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz
         export PATH=$PATH:/usr/local/go/bin
         echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-        rm go1.21.5.linux-amd64.tar.gz
+        rm go1.26.0.linux-amd64.tar.gz
     fi
     
-    # Install Node.js 20 if not present or too old
+    # Install Node.js 22 if not present or too old
     if ! command -v node &> /dev/null; then
-        print_info "Installing Node.js 20 LTS..."
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+        print_info "Installing Node.js 22 LTS..."
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
         apt-get install -y nodejs
     fi
     
