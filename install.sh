@@ -32,21 +32,30 @@ need_deps() {
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt install -y nodejs
   fi
+  if ! command -v npm &>/dev/null; then
+    echo "[+] Installing npm..."
+    apt install -y npm
+  fi
 }
 
 get_theme_frontend() {
-  # Check if running from cloned repo
+  # First try: running from cloned repo
+  if [[ -d "./${FRONTEND_DIR}" ]]; then
+    echo "$(pwd)/${FRONTEND_DIR}"
+    return
+  fi
+  
+  # Second try: script directory
   local script_dir
   script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
-  
   if [[ -d "${script_dir}/${FRONTEND_DIR}" ]]; then
     echo "${script_dir}/${FRONTEND_DIR}"
     return
   fi
   
-  # If piped, clone the theme repo
-  echo "[+] Cloning theme repo to get frontend files..."
-  git clone "${REPO_THEME}" "${WORKDIR}/theme"
+  # Third: clone theme repo
+  echo "[+] Downloading theme frontend from GitHub..."
+  git clone --depth 1 "${REPO_THEME}" "${WORKDIR}/theme"
   echo "${WORKDIR}/theme/${FRONTEND_DIR}"
 }
 
@@ -92,12 +101,12 @@ main() {
       rm -rf "${WORKDIR}"
       mkdir -p "${WORKDIR}"
 
-      # Get theme frontend (from local or clone)
+      # Get theme frontend
       THEME_FRONTEND="$(get_theme_frontend)"
 
       # Clone main 3x-ui
       echo "[+] Cloning 3x-ui..."
-      git clone "${REPO_MAIN}" "${WORKDIR}/3x-ui"
+      git clone --depth 1 "${REPO_MAIN}" "${WORKDIR}/3x-ui"
 
       # Replace frontend
       echo "[+] Replacing frontend with anime theme..."
