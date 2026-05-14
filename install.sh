@@ -54,8 +54,8 @@ get_theme_frontend() {
   fi
   
   # Third: clone theme repo
-  echo "[+] Downloading theme frontend from GitHub..."
-  git clone --depth 1 "${REPO_THEME}" "${WORKDIR}/theme"
+  echo "[+] Downloading theme frontend from GitHub..." >&2
+  git clone --depth 1 "${REPO_THEME}" "${WORKDIR}/theme" >&2
   echo "${WORKDIR}/theme/${FRONTEND_DIR}"
 }
 
