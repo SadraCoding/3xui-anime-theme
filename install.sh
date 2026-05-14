@@ -7,6 +7,7 @@ set -euo pipefail
 # ============================================================
 
 REPO_MAIN="https://github.com/MHSanaei/3x-ui.git"
+REPO_THEME="https://github.com/SadraCoding/3xui-anime-theme.git"
 FRONTEND_DIR="frontend"
 
 INSTALL_DIR="/usr/local/x-ui"
@@ -31,6 +32,22 @@ need_deps() {
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt install -y nodejs
   fi
+}
+
+get_theme_frontend() {
+  # Check if running from cloned repo
+  local script_dir
+  script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+  
+  if [[ -d "${script_dir}/${FRONTEND_DIR}" ]]; then
+    echo "${script_dir}/${FRONTEND_DIR}"
+    return
+  fi
+  
+  # If piped, clone the theme repo
+  echo "[+] Cloning theme repo to get frontend files..."
+  git clone "${REPO_THEME}" "${WORKDIR}/theme"
+  echo "${WORKDIR}/theme/${FRONTEND_DIR}"
 }
 
 backup_current() {
@@ -75,36 +92,30 @@ main() {
       rm -rf "${WORKDIR}"
       mkdir -p "${WORKDIR}"
 
-      # 1. Clone main 3x-ui
+      # Get theme frontend (from local or clone)
+      THEME_FRONTEND="$(get_theme_frontend)"
+
+      # Clone main 3x-ui
       echo "[+] Cloning 3x-ui..."
       git clone "${REPO_MAIN}" "${WORKDIR}/3x-ui"
 
-      # 2. Replace frontend with our theme
-      SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-      THEME_FRONTEND="${SCRIPT_DIR}/${FRONTEND_DIR}"
-
-      if [[ ! -d "${THEME_FRONTEND}" ]]; then
-        echo "ERROR: frontend folder not found in ${SCRIPT_DIR}"
-        echo "Make sure you run this script from the cloned theme repo."
-        exit 1
-      fi
-
+      # Replace frontend
       echo "[+] Replacing frontend with anime theme..."
       rm -rf "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
       cp -r "${THEME_FRONTEND}" "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
 
-      # 3. Build frontend
+      # Build frontend
       echo "[+] Building frontend (npm)..."
       cd "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
       npm install
       npm run build
 
-      # 4. Build backend
+      # Build backend
       echo "[+] Building backend (Go)..."
       cd "${WORKDIR}/3x-ui"
       go build -ldflags "-w -s" -o x-ui-custom main.go
 
-      # 5. Backup & install
+      # Backup & install
       echo "[+] Backing up current x-ui..."
       backup_current
 
