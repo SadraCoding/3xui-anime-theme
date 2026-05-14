@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================
-#  3x-ui Anime Theme Installer v2.0
+#  3x-ui Anime Theme Installer v2.1
 #  Repo: SadraCoding/3xui-anime-theme
 # ============================================================
 
@@ -21,70 +21,32 @@ BACKUP_DIR="/etc/x-ui/theme-backups"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# ─── UI Helpers ───────────────────────────────────────────
+# ─── Helpers ───────────────────────────────────────────────
 
 clear_screen() { clear; }
 
 print_banner() {
     echo -e "${MAGENTA}"
-    echo "    ╔══════════════════════════════════════════════╗"
-    echo "    ║           🎨  3x-ui Anime Theme  🎨           ║"
-    echo "    ║         SadraCoding/3xui-anime-theme         ║"
-    echo "    ╚══════════════════════════════════════════════╝"
+    echo "  ╔══════════════════════════════════════════════╗"
+    echo "  ║       3x-ui Anime Theme Installer            ║"
+    echo "  ║       SadraCoding/3xui-anime-theme           ║"
+    echo "  ╚══════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
-print_section() {
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}  $1${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
+print_line() {
+    echo -e "${CYAN}─────────────────────────────────────────────────${NC}"
 }
 
-print_success() {
-    echo -e "  ${GREEN}✅${NC} $1"
-}
-
-print_error() {
-    echo -e "  ${RED}❌${NC} $1"
-}
-
-print_info() {
-    echo -e "  ${BLUE}ℹ️${NC}  $1"
-}
-
-print_warning() {
-    echo -e "  ${YELLOW}⚠️${NC}  $1"
-}
-
-print_step() {
-    echo -e "  ${CYAN}🔄${NC} $1..."
-}
-
-print_progress() {
-    echo -ne "  ${CYAN}⏳${NC} $1\r"
-}
-
-spinner() {
-    local pid=$1
-    local delay=0.1
-    local spinstr='|/-\'
-    while ps -p "$pid" > /dev/null 2>&1; do
-        local temp=${spinstr#?}
-        printf "  ${CYAN}[%c]${NC}  " "$spinstr"
-        local spinstr=$temp${spinstr%"$temp"}
-        sleep $delay
-        printf "\r"
-    done
-    printf "            \r"
-}
+log_info()  { echo -e "  ${GREEN}[INFO]${NC}  $1"; }
+log_warn()  { echo -e "  ${YELLOW}[WARN]${NC}  $1"; }
+log_error() { echo -e "  ${RED}[ERROR]${NC} $1"; }
+log_step()  { echo -e "  ${CYAN}[STEP]${NC}  $1"; }
 
 confirm() {
     local prompt="$1"
@@ -92,10 +54,10 @@ confirm() {
     local answer
     
     if [[ "$default" == "y" ]]; then
-        read -rp "$(echo -e "  ${YELLOW}❓${NC} ${prompt} [Y/n]: ")" answer
+        read -rp "  ${YELLOW}[?]${NC} ${prompt} [Y/n]: " answer
         answer="${answer:-y}"
     else
-        read -rp "$(echo -e "  ${YELLOW}❓${NC} ${prompt} [y/N]: ")" answer
+        read -rp "  ${YELLOW}[?]${NC} ${prompt} [y/N]: " answer
         answer="${answer:-n}"
     fi
     
@@ -104,82 +66,68 @@ confirm() {
 
 press_enter() {
     echo ""
-    read -rp "$(echo -e "  ${BLUE}🔹 Press Enter to continue...${NC}")"
+    read -rp "  Press Enter to continue..." dummy
 }
 
 # ─── System Checks ────────────────────────────────────────
 
 need_root() {
     if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-        print_error "Please run as root (use sudo)."
+        log_error "Please run as root (use sudo)."
         exit 1
     fi
 }
 
 check_xui_installed() {
     if [[ ! -f "${BIN}" ]]; then
-        print_error "3x-ui not found at ${BIN}"
+        log_error "3x-ui not found at ${BIN}"
         echo ""
-        print_info "Please install 3x-ui first using the official script:"
-        echo -e "  ${YELLOW}bash <(curl -fsSL https://raw.githubusercontent.com/MHSanaei/3x-ui/main/install.sh)${NC}"
+        log_info "Please install 3x-ui first:"
+        echo "  bash <(curl -fsSL https://raw.githubusercontent.com/MHSanaei/3x-ui/main/install.sh)"
         exit 1
     fi
     local version
     version=$("${BIN}" version 2>/dev/null | head -1 || echo "unknown")
-    print_success "3x-ui found: ${version}"
-}
-
-detect_os() {
-    if [[ -f /etc/os-release ]]; then
-        . /etc/os-release
-        OS="${ID}"
-        OS_VERSION="${VERSION_ID}"
-    else
-        OS="unknown"
-    fi
-    print_info "OS: ${OS} ${OS_VERSION:-}"
+    log_info "3x-ui found: ${version}"
 }
 
 # ─── Dependency Installers ─────────────────────────────────
 
 force_install_go() {
-    print_step "Checking Go installation"
+    log_step "Checking Go..."
     
     local required_major=22
     local need_install=false
     
     if ! command -v go &>/dev/null; then
-        print_warning "Go is not installed"
+        log_warn "Go is not installed"
         need_install=true
     else
         local current_ver
         current_ver=$(go version 2>/dev/null | grep -oP 'go\K[0-9]+\.[0-9]+' | cut -d'.' -f1 || echo "0")
         
         if [[ -z "$current_ver" || "$current_ver" -lt "$required_major" ]]; then
-            print_warning "Go version $(go version 2>/dev/null) is too old (need 1.${required_major}+)"
+            log_warn "Go is too old (need 1.${required_major}+)"
             need_install=true
         else
-            print_success "Go $(go version 2>/dev/null)"
+            log_info "Go version OK: $(go version)"
             return
         fi
     fi
     
     if [[ "$need_install" == true ]]; then
-        print_step "Removing old Go"
-        apt remove --purge golang golang-go golang-1.* -y 2>/dev/null || true
-        apt autoremove --purge -y 2>/dev/null || true
-        rm -rf /usr/local/go /usr/lib/go /usr/lib/golang 2>/dev/null || true
+        log_step "Removing old Go..."
+        apt remove --purge golang golang-go -y 2>/dev/null || true
+        rm -rf /usr/local/go 2>/dev/null || true
         
-        print_step "Fetching latest Go version"
         local go_version
         go_version=$(curl -s https://go.dev/dl/?mode=json | grep -oP '"version":\s*"go\K[0-9.]+' | head -1)
         go_version="${go_version:-1.23.4}"
         
-        print_step "Downloading Go ${go_version}"
-        curl -fsSL "https://go.dev/dl/go${go_version}.linux-amd64.tar.gz" -o /tmp/go.tar.gz &
-        spinner $!
+        log_step "Downloading Go ${go_version}..."
+        curl -fsSL "https://go.dev/dl/go${go_version}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
         
-        print_step "Installing Go ${go_version}"
+        log_step "Installing Go ${go_version}..."
         tar -C /usr/local -xzf /tmp/go.tar.gz
         rm -f /tmp/go.tar.gz
         
@@ -188,69 +136,69 @@ force_install_go() {
             echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile
         fi
         
-        print_success "Go $(go version 2>/dev/null) installed"
+        log_info "Go installed: $(go version)"
     fi
 }
 
 force_install_nodejs() {
-    print_step "Checking Node.js installation"
+    log_step "Checking Node.js..."
     
     local required_major=20
     local need_install=false
     
     if ! command -v node &>/dev/null; then
-        print_warning "Node.js is not installed"
+        log_warn "Node.js is not installed"
         need_install=true
     else
         local current_ver
         current_ver=$(node -v 2>/dev/null | sed 's/v//' | cut -d'.' -f1 || echo "0")
         
         if [[ -z "$current_ver" || "$current_ver" -lt "$required_major" ]]; then
-            print_warning "Node.js $(node -v 2>/dev/null) is too old (need ${required_major}+)"
+            log_warn "Node.js is too old (need ${required_major}+)"
             need_install=true
         else
-            print_success "Node.js $(node -v 2>/dev/null)"
+            log_info "Node.js version OK: $(node -v)"
             return
         fi
     fi
     
     if [[ "$need_install" == true ]]; then
-        print_step "Removing old Node.js"
+        log_step "Removing old Node.js..."
         apt remove --purge nodejs nodejs-* libnode* -y 2>/dev/null || true
         apt autoremove --purge -y 2>/dev/null || true
         rm -rf /usr/lib/node_modules /usr/local/lib/node_modules 2>/dev/null || true
         rm -f /etc/apt/sources.list.d/nodesource.list 2>/dev/null || true
         
-        print_step "Installing Node.js 22.x"
-        curl -fsSL https://deb.nodesource.com/setup_22.x | bash - > /dev/null 2>&1 &
-        spinner $!
+        log_step "Installing Node.js 22.x..."
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+        apt install -y nodejs
         
-        apt install -y nodejs > /dev/null 2>&1 &
-        spinner $!
-        
-        print_success "Node.js $(node -v 2>/dev/null) installed"
+        log_info "Node.js installed: $(node -v)"
+        log_info "npm version: $(npm -v)"
     fi
 }
 
 install_system_deps() {
-    print_step "Installing system dependencies"
-    apt update -qq 2>/dev/null
-    apt install -y -qq git ca-certificates build-essential curl > /dev/null 2>&1 &
-    spinner $!
-    print_success "System dependencies installed"
+    log_step "Updating package list..."
+    apt update -qq
+    
+    log_step "Installing required packages..."
+    apt install -y -qq git ca-certificates build-essential curl
+    
+    log_info "System dependencies installed"
 }
 
 # ─── Backup & Restore ──────────────────────────────────────
 
 backup_current() {
-    print_step "Creating backup"
+    log_step "Creating backup..."
     mkdir -p "${BACKUP_DIR}"
     local ts
     ts="$(date +%Y%m%d-%H%M%S)"
     local backup="${BACKUP_DIR}/x-ui.bak.${ts}"
     cp "${BIN}" "${backup}"
     echo "${backup}" > "${BACKUP_DIR}/latest_backup"
-    print_success "Backup saved: ${backup}"
+    log_info "Backup saved: ${backup}"
 }
 
 restore_backup() {
@@ -258,154 +206,157 @@ restore_backup() {
     backup="$(cat "${BACKUP_DIR}/latest_backup" 2>/dev/null || echo "")"
     
     if [[ ! -f "${backup}" ]]; then
-        print_error "No backup found!"
+        log_error "No backup found!"
         echo ""
-        print_info "Available backups:"
-        ls -lth "${BACKUP_DIR}"/x-ui.bak.* 2>/dev/null | head -5 || print_warning "No backups available"
+        log_info "Available backups:"
+        ls -lth "${BACKUP_DIR}"/x-ui.bak.* 2>/dev/null | head -5 || log_warn "No backups available"
         return 1
     fi
     
-    print_step "Stopping x-ui"
+    log_step "Stopping x-ui service..."
     systemctl stop "${SERVICE}" 2>/dev/null || true
     
-    print_step "Restoring from backup"
+    log_step "Restoring from backup..."
     cp "${backup}" "${BIN}"
     chmod 755 "${BIN}"
     
-    print_step "Starting x-ui"
+    log_step "Starting x-ui service..."
     systemctl start "${SERVICE}" 2>/dev/null || true
     
-    print_success "Restored: ${backup}"
+    log_info "Restored: ${backup}"
     return 0
 }
 
 # ─── Build Process ─────────────────────────────────────────
 
 build_theme() {
-    print_section "🔨 Building Anime Theme"
+    print_line
+    echo -e "  ${BOLD}Building Anime Theme${NC}"
+    print_line
     
     # Prepare workspace
-    print_step "Preparing workspace"
+    log_step "Preparing workspace..."
     rm -rf "${WORKDIR}"
     mkdir -p "${WORKDIR}"
-    print_success "Workspace ready"
     
     # Get theme frontend
-    print_step "Locating theme files"
     local theme_frontend
     if [[ -d "./${FRONTEND_DIR}" ]]; then
         theme_frontend="$(pwd)/${FRONTEND_DIR}"
-        print_success "Using local frontend: ${theme_frontend}"
+        log_info "Using local frontend"
     else
-        print_step "Downloading theme from GitHub"
-        git clone --depth 1 "${REPO_THEME}" "${WORKDIR}/theme" > /dev/null 2>&1 &
-        spinner $!
+        log_step "Downloading theme from GitHub..."
+        git clone --depth 1 "${REPO_THEME}" "${WORKDIR}/theme"
         theme_frontend="${WORKDIR}/theme/${FRONTEND_DIR}"
-        print_success "Theme downloaded"
+        log_info "Theme downloaded"
     fi
     
     # Clone main repo
-    print_step "Cloning 3x-ui (this may take a minute)"
-    git clone --depth 1 "${REPO_MAIN}" "${WORKDIR}/3x-ui" > /dev/null 2>&1 &
-    spinner $!
-    print_success "3x-ui cloned"
+    log_step "Cloning 3x-ui repository..."
+    git clone --depth 1 "${REPO_MAIN}" "${WORKDIR}/3x-ui"
+    log_info "3x-ui cloned"
     
     # Replace frontend
-    print_step "Replacing frontend with anime theme"
+    log_step "Replacing frontend with anime theme..."
     rm -rf "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
     cp -r "${theme_frontend}" "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
-    print_success "Frontend replaced"
+    log_info "Frontend replaced"
     
     # Build frontend
-    print_section "📦 Building Frontend (npm)"
+    print_line
+    echo -e "  ${BOLD}Building Frontend (npm)${NC}"
+    print_line
     
     cd "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
     
-    print_step "Installing npm dependencies"
-    npm install --silent > /dev/null 2>&1 &
-    spinner $!
-    print_success "Dependencies installed"
+    log_step "Installing npm dependencies..."
+    npm install
+    log_info "Dependencies installed"
     
-    print_step "Building frontend bundle"
-    npm run build > /dev/null 2>&1 &
-    spinner $!
+    log_step "Building frontend bundle..."
+    npm run build
+    log_info "Frontend built"
     
-    if [[ -d "${WORKDIR}/3x-ui/web/dist" ]]; then
-        print_success "Frontend built successfully"
-    else
-        print_error "Frontend build failed!"
+    if [[ ! -d "${WORKDIR}/3x-ui/web/dist" ]]; then
+        log_error "Frontend build failed! web/dist not found"
         return 1
     fi
     
     # Build backend
-    print_section "⚙️  Building Backend (Go)"
+    print_line
+    echo -e "  ${BOLD}Building Backend (Go)${NC}"
+    print_line
     
     cd "${WORKDIR}/3x-ui"
     
-    print_step "Compiling x-ui with anime theme"
-    go build -ldflags "-w -s" -o x-ui-custom main.go > /dev/null 2>&1 &
-    spinner $!
+    log_step "Compiling x-ui with anime theme..."
+    go build -ldflags "-w -s" -o x-ui-custom main.go
     
-    if [[ -f "x-ui-custom" ]]; then
-        local size
-        size=$(du -h x-ui-custom | cut -f1)
-        print_success "Backend built successfully (${size})"
-        return 0
-    else
-        print_error "Backend build failed!"
+    if [[ ! -f "x-ui-custom" ]]; then
+        log_error "Backend build failed!"
         return 1
     fi
+    
+    local size
+    size=$(du -h x-ui-custom | cut -f1)
+    log_info "Backend built: x-ui-custom (${size})"
+    
+    return 0
 }
 
 # ─── Installation ──────────────────────────────────────────
 
 install_theme() {
-    print_section "📥 Installing Theme"
+    print_line
+    echo -e "  ${BOLD}Installing Theme${NC}"
+    print_line
     
-    print_step "Stopping x-ui service"
+    log_step "Stopping x-ui service..."
     systemctl stop "${SERVICE}" 2>/dev/null || true
-    print_success "Service stopped"
     
-    print_step "Installing new binary"
+    log_step "Installing new binary..."
     install -m 0755 "${WORKDIR}/3x-ui/x-ui-custom" "${BIN}"
-    print_success "Binary installed"
+    log_info "Binary installed"
     
-    print_step "Starting x-ui service"
+    log_step "Starting x-ui service..."
     systemctl start "${SERVICE}" 2>/dev/null || true
     sleep 2
     
     if systemctl is-active --quiet "${SERVICE}"; then
-        print_success "Service is running"
+        log_info "Service is running"
     else
-        print_warning "Service may not have started. Check: systemctl status x-ui"
+        log_warn "Service may not have started. Check: systemctl status x-ui"
     fi
 }
 
-# ─── Main Menus ────────────────────────────────────────────
+# ─── Menus ─────────────────────────────────────────────────
 
 menu_install() {
     clear_screen
     print_banner
     
-    print_section "📋 System Check"
+    print_line
+    echo -e "  ${BOLD}System Check${NC}"
+    print_line
     check_xui_installed
-    detect_os
     press_enter
     
-    print_section "🔧 Installing Dependencies"
+    print_line
+    echo -e "  ${BOLD}Installing Dependencies${NC}"
+    print_line
     install_system_deps
     force_install_go
     force_install_nodejs
     
     echo ""
-    print_success "All dependencies ready!"
-    print_info "Go:     $(go version 2>/dev/null || echo 'not found')"
-    print_info "Node:   $(node -v 2>/dev/null || echo 'not found')"
-    print_info "npm:    $(npm -v 2>/dev/null || echo 'not found')"
+    log_info "All dependencies ready"
+    log_info "Go:     $(go version 2>/dev/null || echo 'not found')"
+    log_info "Node:   $(node -v 2>/dev/null || echo 'not found')"
+    log_info "npm:    $(npm -v 2>/dev/null || echo 'not found')"
     press_enter
     
     if ! build_theme; then
-        print_error "Build failed! Please check the logs."
+        log_error "Build failed!"
         exit 1
     fi
     
@@ -415,54 +366,62 @@ menu_install() {
         install_theme
         
         echo ""
-        echo -e "${GREEN}  ╔══════════════════════════════════════════════╗${NC}"
-        echo -e "${GREEN}  ║     🎉 Anime Theme Installed Successfully!  ║${NC}"
-        echo -e "${GREEN}  ║        Clear browser cache to see it        ║${NC}"
-        echo -e "${GREEN}  ╚══════════════════════════════════════════════╝${NC}"
+        print_line
+        echo -e "  ${GREEN}${BOLD}Installation Complete!${NC}"
+        echo -e "  ${GREEN}Anime theme is now active on your panel.${NC}"
+        echo -e "  ${YELLOW}Clear browser cache to see changes.${NC}"
+        print_line
         echo ""
     else
-        print_warning "Installation cancelled."
+        log_warn "Installation cancelled"
     fi
 }
 
 menu_uninstall() {
     clear_screen
     print_banner
-    print_section "🔙 Restore Original Panel"
+    
+    print_line
+    echo -e "  ${BOLD}Restore Original Panel${NC}"
+    print_line
     
     if confirm "This will restore the backup of your original x-ui. Continue?"; then
         if restore_backup; then
             echo ""
-            echo -e "${GREEN}  ╔══════════════════════════════════════════════╗${NC}"
-            echo -e "${GREEN}  ║      ✅ Original Panel Restored!            ║${NC}"
-            echo -e "${GREEN}  ╚══════════════════════════════════════════════╝${NC}"
+            print_line
+            echo -e "  ${GREEN}Original Panel Restored!${NC}"
+            print_line
         fi
     else
-        print_info "Restore cancelled."
+        log_info "Restore cancelled"
     fi
 }
 
 menu_status() {
     clear_screen
     print_banner
-    print_section "📊 Status"
+    
+    print_line
+    echo -e "  ${BOLD}Status${NC}"
+    print_line
+    echo ""
     
     echo -e "  ${BOLD}Service:${NC}"
-    systemctl status "${SERVICE}" --no-pager 2>/dev/null | head -5 || print_warning "Service not found"
+    systemctl status "${SERVICE}" --no-pager 2>/dev/null | head -5 || log_warn "Service not found"
     
     echo ""
     echo -e "  ${BOLD}Backups:${NC}"
     if [[ -d "${BACKUP_DIR}" ]]; then
-        ls -lth "${BACKUP_DIR}"/x-ui.bak.* 2>/dev/null | head -5 || print_info "No backups found"
+        ls -lth "${BACKUP_DIR}"/x-ui.bak.* 2>/dev/null | head -5 || log_info "No backups found"
     else
-        print_info "No backups yet"
+        log_info "No backups directory"
     fi
     
     echo ""
     echo -e "  ${BOLD}Current Binary:${NC}"
     if [[ -f "${BIN}" ]]; then
-        print_info "Size: $(du -h "${BIN}" | cut -f1)"
-        print_info "Modified: $(stat -c %y "${BIN}" 2>/dev/null || stat -f %Sm "${BIN}" 2>/dev/null)"
+        log_info "Size: $(du -h "${BIN}" | cut -f1)"
+        log_info "Modified: $(stat -c %y "${BIN}" 2>/dev/null || stat -f %Sm "${BIN}" 2>/dev/null)"
     fi
     
     echo ""
@@ -475,14 +434,14 @@ menu_main() {
         print_banner
         
         echo ""
-        echo -e "  ${BOLD}Please select an option:${NC}"
+        echo -e "  ${BOLD}Select an option:${NC}"
         echo ""
-        echo -e "  ${GREEN}1)${NC}  🎨  Install Anime Theme"
-        echo -e "  ${YELLOW}2)${NC}  🔙  Uninstall (Restore Original)"
-        echo -e "  ${BLUE}3)${NC}  📊  Check Status"
-        echo -e "  ${RED}0)${NC}  🚪  Exit"
+        echo -e "  ${GREEN}1)${NC}  Install Anime Theme"
+        echo -e "  ${YELLOW}2)${NC}  Uninstall (Restore Original)"
+        echo -e "  ${BLUE}3)${NC}  Check Status"
+        echo -e "  ${RED}0)${NC}  Exit"
         echo ""
-        read -rp "$(echo -e "  ${CYAN}Enter your choice [0-3]:${NC} ")" choice
+        read -rp "  Enter your choice [0-3]: " choice
         
         case "${choice}" in
             1) menu_install ;;
@@ -490,10 +449,10 @@ menu_main() {
             3) menu_status ;;
             0) 
                 echo ""
-                print_info "Goodbye! 👋"
+                log_info "Goodbye!"
                 exit 0 
                 ;;
-            *) print_warning "Invalid option. Try again."; sleep 1 ;;
+            *) log_warn "Invalid option. Try again."; sleep 1 ;;
         esac
     done
 }
@@ -503,7 +462,6 @@ menu_main() {
 main() {
     need_root
     
-    # If arguments passed, run directly
     if [[ $# -gt 0 ]]; then
         case "${1}" in
             install) menu_install ;;
@@ -516,7 +474,6 @@ main() {
                 ;;
         esac
     else
-        # Interactive menu
         menu_main
     fi
 }
