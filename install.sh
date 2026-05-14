@@ -32,28 +32,52 @@ need_root() {
   fi
 }
 
-install_nodejs() {
-  local required_major=20
+force_install_nodejs() {
+  log "Checking Node.js version..."
   
-  # Check if Node.js is installed and version is enough
-  if command -v node &>/dev/null; then
+  local need_install=false
+  
+  if ! command -v node &>/dev/null; then
+    warn "Node.js is not installed."
+    need_install=true
+  else
     local current_ver
-    current_ver=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [[ "$current_ver" -ge "$required_major" ]]; then
-      log "Node.js $(node -v) already installed."
+    current_ver=$(node -v 2>/dev/null | sed 's/v//' | cut -d'.' -f1)
+    log "Current Node.js version: $(node -v)"
+    
+    if [[ "$current_ver" -lt 20 ]]; then
+      warn "Node.js version $(node -v) is too old (need 20+)."
+      need_install=true
+    else
+      log "Node.js version is OK."
       return
     fi
-    warn "Node.js $(node -v) is too old. Upgrading..."
-    apt remove nodejs -y 2>/dev/null || true
-    apt autoremove -y 2>/dev/null || true
   fi
-
-  log "Installing Node.js 22.x..."
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt install -y nodejs
   
-  log "Node.js $(node -v) installed."
-  log "npm $(npm -v) installed."
+  if [[ "$need_install" == true ]]; then
+    log "Removing old Node.js completely..."
+    apt remove --purge nodejs -y 2>/dev/null || true
+    apt autoremove --purge -y 2>/dev/null || true
+    rm -rf /usr/lib/node_modules 2>/dev/null || true
+    rm -rf /usr/local/lib/node_modules 2>/dev/null || true
+    rm -rf /usr/local/bin/node 2>/dev/null || true
+    rm -rf /usr/local/bin/npm 2>/dev/null || true
+    rm -rf /usr/local/bin/npx 2>/dev/null || true
+    rm -rf /usr/local/include/node 2>/dev/null || true
+    rm -rf ~/.npm 2>/dev/null || true
+    rm -rf ~/.node-gyp 2>/dev/null || true
+    
+    log "Installing Node.js 22.x..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    apt install -y nodejs
+    
+    if ! command -v node &>/dev/null; then
+      err "Failed to install Node.js!"
+    fi
+    
+    log "Node.js $(node -v) installed successfully."
+    log "npm $(npm -v) installed successfully."
+  fi
 }
 
 need_deps() {
@@ -63,7 +87,7 @@ need_deps() {
   log "Installing system dependencies..."
   apt install -y git ca-certificates build-essential golang curl
   
-  install_nodejs
+  force_install_nodejs
 }
 
 backup_current() {
@@ -100,12 +124,6 @@ restore_backup() {
   log "Restored: ${backup}"
 }
 
-check_command() {
-  if ! command -v "$1" &>/dev/null; then
-    err "$1 is not installed. Something went wrong."
-  fi
-}
-
 main() {
   need_root
   local cmd="${1:-install}"
@@ -123,10 +141,12 @@ main() {
       need_deps
       
       # Verify tools
-      check_command git
-      check_command go
-      check_command node
-      check_command npm
+      log "Verifying tools..."
+      command -v git >/dev/null 2>&1 || err "git is missing"
+      command -v go >/dev/null 2>&1 || err "go is missing"
+      command -v node >/dev/null 2>&1 || err "node is missing"
+      command -v npm >/dev/null 2>&1 || err "npm is missing"
+      log "All tools verified."
       
       # Clean workdir
       rm -rf "${WORKDIR}"
@@ -152,7 +172,7 @@ main() {
       # Build frontend
       log "Building frontend (this may take a few minutes)..."
       cd "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
-      npm install --silent
+      npm install
       npm run build
       
       if [[ ! -d "${WORKDIR}/3x-ui/web/dist" ]]; then
