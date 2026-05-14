@@ -32,9 +32,75 @@ need_root() {
   fi
 }
 
+force_install_go() {
+  log "Checking Go version..."
+  
+  local required_major=22
+  local need_install=false
+  
+  if ! command -v go &>/dev/null; then
+    warn "Go is not installed."
+    need_install=true
+  else
+    local current_ver
+    current_ver=$(go version 2>/dev/null | grep -oP 'go\K[0-9]+\.[0-9]+' | cut -d'.' -f1 || echo "0")
+    log "Current Go version: $(go version 2>/dev/null || echo 'unknown')"
+    
+    if [[ -z "$current_ver" || "$current_ver" -lt "$required_major" ]]; then
+      warn "Go version is too old (need 1.${required_major}+)."
+      need_install=true
+    else
+      log "Go version is OK."
+      return
+    fi
+  fi
+  
+  if [[ "$need_install" == true ]]; then
+    log "Removing old Go completely..."
+    apt remove --purge golang golang-go golang-1.* -y 2>/dev/null || true
+    apt autoremove --purge -y 2>/dev/null || true
+    rm -rf /usr/local/go 2>/dev/null || true
+    rm -rf /usr/lib/go 2>/dev/null || true
+    rm -rf /usr/lib/golang 2>/dev/null || true
+    rm -f /etc/profile.d/go.sh 2>/dev/null || true
+    
+    # Get latest Go version
+    log "Fetching latest Go version..."
+    local go_version
+    go_version=$(curl -s https://go.dev/dl/?mode=json | grep -oP '"version":\s*"go\K[0-9.]+' | head -1)
+    
+    if [[ -z "$go_version" ]]; then
+      warn "Could not fetch latest version, using fallback 1.23.4"
+      go_version="1.23.4"
+    fi
+    
+    log "Downloading Go ${go_version}..."
+    curl -fsSL "https://go.dev/dl/go${go_version}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+    
+    log "Installing Go ${go_version}..."
+    tar -C /usr/local -xzf /tmp/go.tar.gz
+    rm -f /tmp/go.tar.gz
+    
+    # Add to PATH permanently
+    if ! grep -q '/usr/local/go/bin' /etc/profile 2>/dev/null; then
+      echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile
+    fi
+    
+    # Add to current session
+    export PATH=$PATH:/usr/local/go/bin
+    
+    if ! command -v go &>/dev/null; then
+      err "Failed to install Go!"
+    fi
+    
+    log "Go $(go version) installed successfully."
+  fi
+}
+
 force_install_nodejs() {
   log "Checking Node.js version..."
   
+  local required_major=20
   local need_install=false
   
   if ! command -v node &>/dev/null; then
@@ -42,11 +108,11 @@ force_install_nodejs() {
     need_install=true
   else
     local current_ver
-    current_ver=$(node -v 2>/dev/null | sed 's/v//' | cut -d'.' -f1)
-    log "Current Node.js version: $(node -v)"
+    current_ver=$(node -v 2>/dev/null | sed 's/v//' | cut -d'.' -f1 || echo "0")
+    log "Current Node.js version: $(node -v 2>/dev/null || echo 'unknown')"
     
-    if [[ "$current_ver" -lt 20 ]]; then
-      warn "Node.js version $(node -v) is too old (need 20+)."
+    if [[ -z "$current_ver" || "$current_ver" -lt "$required_major" ]]; then
+      warn "Node.js version is too old (need ${required_major}+)."
       need_install=true
     else
       log "Node.js version is OK."
@@ -56,7 +122,7 @@ force_install_nodejs() {
   
   if [[ "$need_install" == true ]]; then
     log "Removing old Node.js completely..."
-    apt remove --purge nodejs -y 2>/dev/null || true
+    apt remove --purge nodejs nodejs-* libnode* -y 2>/dev/null || true
     apt autoremove --purge -y 2>/dev/null || true
     rm -rf /usr/lib/node_modules 2>/dev/null || true
     rm -rf /usr/local/lib/node_modules 2>/dev/null || true
@@ -64,8 +130,10 @@ force_install_nodejs() {
     rm -rf /usr/local/bin/npm 2>/dev/null || true
     rm -rf /usr/local/bin/npx 2>/dev/null || true
     rm -rf /usr/local/include/node 2>/dev/null || true
+    rm -rf /usr/local/share/man/man1/node* 2>/dev/null || true
     rm -rf ~/.npm 2>/dev/null || true
     rm -rf ~/.node-gyp 2>/dev/null || true
+    rm -f /etc/apt/sources.list.d/nodesource.list 2>/dev/null || true
     
     log "Installing Node.js 22.x..."
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
@@ -85,8 +153,9 @@ need_deps() {
   apt update -qq
   
   log "Installing system dependencies..."
-  apt install -y git ca-certificates build-essential golang curl
+  apt install -y git ca-certificates build-essential curl
   
+  force_install_go
   force_install_nodejs
 }
 
@@ -137,7 +206,6 @@ main() {
       echo "============================================"
       echo ""
       
-      # Install dependencies
       need_deps
       
       # Verify tools
@@ -147,6 +215,9 @@ main() {
       command -v node >/dev/null 2>&1 || err "node is missing"
       command -v npm >/dev/null 2>&1 || err "npm is missing"
       log "All tools verified."
+      log "Go: $(go version)"
+      log "Node: $(node -v)"
+      log "npm: $(npm -v)"
       
       # Clean workdir
       rm -rf "${WORKDIR}"
