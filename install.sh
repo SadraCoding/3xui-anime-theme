@@ -17,49 +17,93 @@ SERVICE="x-ui"
 WORKDIR="/root/3xui-theme-build"
 BACKUP_DIR="/etc/x-ui/theme-backups"
 
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[+]${NC} $1"; }
+warn() { echo -e "${YELLOW}[!]${NC} $1"; }
+err() { echo -e "${RED}[-]${NC} $1"; exit 1; }
+
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "ERROR: Please run as root (use sudo)."
-    exit 1
+    err "Please run as root (use sudo)."
   fi
+}
+
+install_nodejs() {
+  local required_major=20
+  
+  # Check if Node.js is installed and version is enough
+  if command -v node &>/dev/null; then
+    local current_ver
+    current_ver=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [[ "$current_ver" -ge "$required_major" ]]; then
+      log "Node.js $(node -v) already installed."
+      return
+    fi
+    warn "Node.js $(node -v) is too old. Upgrading..."
+    apt remove nodejs -y 2>/dev/null || true
+    apt autoremove -y 2>/dev/null || true
+  fi
+
+  log "Installing Node.js 22.x..."
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  apt install -y nodejs
+  
+  log "Node.js $(node -v) installed."
+  log "npm $(npm -v) installed."
 }
 
 need_deps() {
-  echo "[+] Installing dependencies..."
-  apt update && apt install -y git ca-certificates build-essential golang curl
-  if ! command -v node &>/dev/null; then
-    echo "[+] Installing Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt install -y nodejs
-  fi
-  if ! command -v npm &>/dev/null; then
-    apt install -y npm
-  fi
+  log "Updating package lists..."
+  apt update -qq
+  
+  log "Installing system dependencies..."
+  apt install -y git ca-certificates build-essential golang curl
+  
+  install_nodejs
 }
 
 backup_current() {
+  if [[ ! -f "${BIN}" ]]; then
+    warn "No existing x-ui binary found at ${BIN}, skipping backup."
+    return
+  fi
+  
   mkdir -p "${BACKUP_DIR}"
   local ts
   ts="$(date +%Y%m%d-%H%M%S)"
   local backup="${BACKUP_DIR}/x-ui.bak.${ts}"
   cp "${BIN}" "${backup}"
-  echo "[+] Backup saved: ${backup}"
+  log "Backup saved: ${backup}"
   echo "${backup}" > "${BACKUP_DIR}/latest_backup"
 }
 
 restore_backup() {
   local backup="${1:-$(cat "${BACKUP_DIR}/latest_backup" 2>/dev/null)}"
   if [[ ! -f "${backup}" ]]; then
-    echo "ERROR: Backup not found: ${backup}"
-    echo "Available backups:"
-    ls -lt "${BACKUP_DIR}"/x-ui.bak.* 2>/dev/null | head -5 || true
-    exit 1
+    err "Backup not found: ${backup}"
   fi
-  systemctl stop "${SERVICE}" || true
+  
+  log "Stopping ${SERVICE}..."
+  systemctl stop "${SERVICE}" 2>/dev/null || true
+  
+  log "Restoring backup..."
   cp "${backup}" "${BIN}"
   chmod 755 "${BIN}"
-  systemctl start "${SERVICE}" || true
-  echo "[+] Restored: ${backup}"
+  
+  log "Starting ${SERVICE}..."
+  systemctl start "${SERVICE}" 2>/dev/null || true
+  
+  log "Restored: ${backup}"
+}
+
+check_command() {
+  if ! command -v "$1" &>/dev/null; then
+    err "$1 is not installed. Something went wrong."
+  fi
 }
 
 main() {
@@ -68,66 +112,112 @@ main() {
 
   case "${cmd}" in
     install)
+      clear
       echo "============================================"
       echo "  3x-ui Anime Theme Installer"
       echo "  SadraCoding/3xui-anime-theme"
       echo "============================================"
+      echo ""
       
+      # Install dependencies
       need_deps
+      
+      # Verify tools
+      check_command git
+      check_command go
+      check_command node
+      check_command npm
+      
+      # Clean workdir
       rm -rf "${WORKDIR}"
       mkdir -p "${WORKDIR}"
-
-      # Clone theme repo directly to get frontend
-      echo "[+] Downloading anime theme..."
+      
+      # Clone theme repo
+      log "Downloading anime theme..."
       git clone --depth 1 "${REPO_THEME}" "${WORKDIR}/theme"
-
+      
+      if [[ ! -d "${WORKDIR}/theme/${FRONTEND_DIR}" ]]; then
+        err "Theme frontend folder not found in cloned repo!"
+      fi
+      
       # Clone main 3x-ui
-      echo "[+] Cloning 3x-ui..."
+      log "Cloning 3x-ui..."
       git clone --depth 1 "${REPO_MAIN}" "${WORKDIR}/3x-ui"
-
+      
       # Replace frontend
-      echo "[+] Replacing frontend with anime theme..."
+      log "Replacing frontend with anime theme..."
       rm -rf "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
       cp -r "${WORKDIR}/theme/${FRONTEND_DIR}" "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
-
+      
       # Build frontend
-      echo "[+] Building frontend (npm)..."
+      log "Building frontend (this may take a few minutes)..."
       cd "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
-      npm install
+      npm install --silent
       npm run build
-
+      
+      if [[ ! -d "${WORKDIR}/3x-ui/web/dist" ]]; then
+        err "Frontend build failed! web/dist folder not found."
+      fi
+      
+      log "Frontend built successfully."
+      
       # Build backend
-      echo "[+] Building backend (Go)..."
+      log "Building backend (Go)..."
       cd "${WORKDIR}/3x-ui"
       go build -ldflags "-w -s" -o x-ui-custom main.go
-
-      # Backup & install
-      echo "[+] Backing up current x-ui..."
+      
+      if [[ ! -f "x-ui-custom" ]]; then
+        err "Backend build failed!"
+      fi
+      
+      log "Backend built successfully."
+      
+      # Backup current installation
       backup_current
-
-      echo "[+] Installing new x-ui..."
-      systemctl stop "${SERVICE}" || true
+      
+      # Install new binary
+      log "Installing new x-ui..."
+      systemctl stop "${SERVICE}" 2>/dev/null || true
       install -m 0755 x-ui-custom "${BIN}"
-      systemctl start "${SERVICE}" || true
-
+      systemctl start "${SERVICE}" 2>/dev/null || true
+      
+      # Verify service started
+      sleep 2
+      if systemctl is-active --quiet "${SERVICE}"; then
+        log "Service ${SERVICE} is running."
+      else
+        warn "Service ${SERVICE} may not have started. Check: systemctl status ${SERVICE}"
+      fi
+      
       echo ""
-      echo "[+] Done! Anime theme installed."
-      echo "[+] Open your panel to see the theme."
+      echo "============================================"
+      echo "  Installation Complete!"
+      echo "  Anime theme is now active on your panel."
+      echo "  SadraCoding/3xui-anime-theme"
+      echo "============================================"
+      echo ""
+      echo "To uninstall: $0 uninstall"
+      echo "To check status: $0 status"
       ;;
-
+      
     uninstall)
-      echo "[+] Restoring backup..."
+      log "Restoring original x-ui..."
       restore_backup
-      echo "[+] Original panel restored."
+      log "Original panel restored."
       ;;
-
+      
     status)
-      systemctl status "${SERVICE}" --no-pager || true
+      echo "Service status:"
+      systemctl status "${SERVICE}" --no-pager 2>/dev/null || echo "Service ${SERVICE} not found."
       echo ""
-      echo "Backups:"
-      ls -lt "${BACKUP_DIR}"/x-ui.bak.* 2>/dev/null | head -5 || echo "No backups found"
+      echo "Available backups:"
+      if [[ -d "${BACKUP_DIR}" ]]; then
+        ls -lth "${BACKUP_DIR}"/x-ui.bak.* 2>/dev/null | head -10 || echo "No backups found."
+      else
+        echo "No backup directory found."
+      fi
       ;;
-
+      
     *)
       echo "Usage: $0 {install|uninstall|status}"
       exit 1
