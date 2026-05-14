@@ -33,30 +33,8 @@ need_deps() {
     apt install -y nodejs
   fi
   if ! command -v npm &>/dev/null; then
-    echo "[+] Installing npm..."
     apt install -y npm
   fi
-}
-
-get_theme_frontend() {
-  # First try: running from cloned repo
-  if [[ -d "./${FRONTEND_DIR}" ]]; then
-    echo "$(pwd)/${FRONTEND_DIR}"
-    return
-  fi
-  
-  # Second try: script directory
-  local script_dir
-  script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
-  if [[ -d "${script_dir}/${FRONTEND_DIR}" ]]; then
-    echo "${script_dir}/${FRONTEND_DIR}"
-    return
-  fi
-  
-  # Third: clone theme repo
-  echo "[+] Downloading theme frontend from GitHub..." >&2
-  git clone --depth 1 "${REPO_THEME}" "${WORKDIR}/theme" >&2
-  echo "${WORKDIR}/theme/${FRONTEND_DIR}"
 }
 
 backup_current() {
@@ -86,7 +64,6 @@ restore_backup() {
 
 main() {
   need_root
-
   local cmd="${1:-install}"
 
   case "${cmd}" in
@@ -95,14 +72,14 @@ main() {
       echo "  3x-ui Anime Theme Installer"
       echo "  SadraCoding/3xui-anime-theme"
       echo "============================================"
-
+      
       need_deps
-
       rm -rf "${WORKDIR}"
       mkdir -p "${WORKDIR}"
 
-      # Get theme frontend
-      THEME_FRONTEND="$(get_theme_frontend)"
+      # Clone theme repo directly to get frontend
+      echo "[+] Downloading anime theme..."
+      git clone --depth 1 "${REPO_THEME}" "${WORKDIR}/theme"
 
       # Clone main 3x-ui
       echo "[+] Cloning 3x-ui..."
@@ -111,7 +88,7 @@ main() {
       # Replace frontend
       echo "[+] Replacing frontend with anime theme..."
       rm -rf "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
-      cp -r "${THEME_FRONTEND}" "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
+      cp -r "${WORKDIR}/theme/${FRONTEND_DIR}" "${WORKDIR}/3x-ui/${FRONTEND_DIR}"
 
       # Build frontend
       echo "[+] Building frontend (npm)..."
